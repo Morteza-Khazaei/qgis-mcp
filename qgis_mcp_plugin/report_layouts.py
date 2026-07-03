@@ -353,7 +353,7 @@ def duplicate_map_layout(
 
     labels = sorted(
         [i for i in layout.items() if isinstance(i, QgsLayoutItemLabel)],
-        key=lambda l: (l.pagePos().y(), l.pagePos().x()),
+        key=lambda lab: (lab.pagePos().y(), lab.pagePos().x()),
     )
     for lab in labels:
         f = lab.font().pointSize()
@@ -384,18 +384,16 @@ def find_detail_window(layer_id, window_m=12000, grid=64, **kwargs):
     Returns extent in PROJECT CRS."""
     proj = _project()
     lyr = proj.mapLayer(layer_id)
-    if lyr is None or lyr.type().name != "RasterLayer" and str(lyr.type()) != "LayerType.Raster":
-        lyr = proj.mapLayer(layer_id)
-        if lyr is None:
-            raise ValueError(f"Layer not found: {layer_id}")
+    if lyr is None:
+        raise ValueError(f"Layer not found: {layer_id}")
     dp = lyr.dataProvider()
     ext = lyr.extent()
     nx = ny = 400
     blk = dp.block(1, ext, nx, ny)
     nd = dp.sourceNoDataValue(1)
     mx, my = _m_per_unit_xy(lyr.crs(), ext)
-    win_x = max(2, int(round(window_m / (ext.width() * mx) * nx)))
-    win_y = max(2, int(round(window_m / (ext.height() * my) * ny)))
+    win_x = max(2, round(window_m / (ext.width() * mx) * nx))
+    win_y = max(2, round(window_m / (ext.height() * my) * ny))
     best, bi, bj = -1.0, 0, 0
     step_i = max(1, win_y // 4)
     step_j = max(1, win_x // 4)
@@ -412,8 +410,8 @@ def find_detail_window(layer_id, window_m=12000, grid=64, **kwargs):
             row[j + 1] = ok + prev[j + 1] + row[j] - prev[j]
     for i in range(0, ny - win_y, step_i):
         for j in range(0, nx - win_x, step_j):
-            s = (valid[i + win_y][j + win_x] - valid[i][j + win_x]
-                 - valid[i + win_y][j] + valid[i][j])
+            lo_row, hi_row = valid[i], valid[i + win_y]
+            s = hi_row[j + win_x] - lo_row[j + win_x] - hi_row[j] + lo_row[j]
             f = s / (win_x * win_y)
             if f > best:
                 best, bi, bj = f, i, j
@@ -454,8 +452,8 @@ def apply_quantile_style(
     dp = lyr.dataProvider()
     breaks = []
     for k in range(1, classes):
-        lo, hi = dp.cumulativeCut(1, min_valid, k / classes, lyr.extent(), 250000)
-        breaks.append(round(hi, decimals) if decimals else int(round(hi)))
+        _, hi = dp.cumulativeCut(1, min_valid, k / classes, lyr.extent(), 250000)
+        breaks.append(round(hi, decimals) if decimals else round(hi))
     if class_names is None:
         class_names = (["Very Low", "Low", "Medium", "High", "Very High"]
                        if classes == 5 else
@@ -467,9 +465,9 @@ def apply_quantile_style(
     labels += [f"{class_names[-1]} (> {fmt % breaks[-1]})"]
     r = QgsStyle.defaultStyle().colorRamp(ramp)
     fn = QgsColorRampShader(0, breaks[-1], r, QgsColorRampShader.Discrete)
-    vals = list(breaks) + [3.4e38]  # last discrete item must be a huge float, not inf
+    vals = [*breaks, 3.4e38]  # last discrete item must be a huge float, not inf
     items = [QgsColorRampShader.ColorRampItem(v, r.color(i / (classes - 1)), lab)
-             for i, (v, lab) in enumerate(zip(vals, labels))]
+             for i, (v, lab) in enumerate(zip(vals, labels, strict=True))]
     fn.setColorRampItemList(items)
     rs = QgsRasterShader()
     rs.setRasterShaderFunction(fn)

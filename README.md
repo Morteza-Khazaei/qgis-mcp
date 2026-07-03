@@ -134,6 +134,33 @@ You have access to QGIS tools. Do the following:
 7. Save the project
 ```
 
+## Claude Code skills (optional)
+
+The repo bundles agent skills under `claude_skills/` that teach Claude Code guided
+workflows on top of the MCP tools:
+
+- **qgis-geo-report** — turn raster/vector layers into an analytical report: layer
+  inventory and unit identification, one questionnaire round (scenario, ancillary
+  data via STAC, standard map layout furniture, output format), then statistics
+  (zonal areas, conditional "why" analyses, hexbin relationship galleries), maps
+  built with the server's report-layout tools, and a self-contained HTML / Word /
+  Markdown report. Ships helper libraries (`geo_report_lib.py`, `report_writers.py`)
+  that each report copies into its `codes/` folder for reproducibility.
+
+Install them during setup — the installer asks interactively, or:
+
+```bash
+python install.py --non-interactive --skills --qgis-workspace ~/qgis-work
+# QGIS on Windows but Claude Code in WSL? Give both views of the same folder:
+python install.py --non-interactive --skills \
+    --qgis-workspace "C:/Users/me/qgis-work" --local-workspace /mnt/c/Users/me/qgis-work
+```
+
+Skills are **copied** (not symlinked — Claude Code's skill scanner doesn't follow
+symlinked directories) into `~/.claude/skills/`, with workspace paths rendered into
+`SKILL.md` at install time. Re-run the command after a `git pull` to update;
+`--uninstall` removes them.
+
 ## Updating
 
 The plugin (inside QGIS) and the MCP server (outside QGIS) must stay in sync — a newer server sending a command the older plugin doesn't know will return an error. Run `diagnose` after any update to verify both sides match.

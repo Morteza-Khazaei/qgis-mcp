@@ -23,9 +23,10 @@ from pathlib import Path
 
 REPO_DIR = Path(__file__).resolve().parent
 PLUGIN_SRC = REPO_DIR / "qgis_mcp_plugin"
+SKILLS_SRC = REPO_DIR / "claude_skills"
 # Zip archive instead of git+ URL: uvx then needs no git executable, which is
 # not visible to GUI-spawned MCP servers (e.g. Claude Desktop on Windows).
-GITHUB_URL = "https://github.com/nkarasiak/qgis-mcp/archive/refs/heads/main.zip"
+GITHUB_URL = "https://github.com/Morteza-Khazaei/qgis-mcp/archive/refs/heads/main.zip"
 
 # ── Platform helpers ────────────────────────────────────────────────────────
 
@@ -448,6 +449,92 @@ def interactive_mode_choice() -> bool:
     return choice == "2"
 
 
+# ── Claude Code skills ──────────────────────────────────────────────────────
+# The repo ships agent skills (claude_skills/<name>/) that teach Claude Code
+# guided workflows on top of the MCP tools (e.g. qgis-geo-report: layers →
+# statistics + charts + standard-layout maps → HTML/Word/Markdown report).
+# SKILL.md.tpl files carry {{QGIS_WORKSPACE}} / {{LOCAL_WORKSPACE}} /
+# {{PATH_NOTE}} placeholders rendered at install time, because QGIS and the
+# Claude Code shell may see the same folder under different paths (e.g. QGIS
+# on Windows at C:/Users/me/maps, Claude Code in WSL at /mnt/c/Users/me/maps).
+
+
+def claude_skills_dir() -> Path:
+    return _home() / ".claude" / "skills"
+
+
+def _render_skill_template(text: str, qgis_ws: str, local_ws: str) -> str:
+    if qgis_ws == local_ws:
+        note = "(Same machine: both sides see the workspace at the same path.)"
+    else:
+        note = (
+            "Same files, two path prefixes — always translate between them when "
+            "handing paths across (PyQGIS calls get the QGIS-side prefix; shell "
+            "commands and file reads get the local prefix)."
+        )
+    return (
+        text.replace("{{QGIS_WORKSPACE}}", qgis_ws.rstrip("/\\"))
+        .replace("{{LOCAL_WORKSPACE}}", local_ws.rstrip("/\\"))
+        .replace("{{PATH_NOTE}}", note)
+    )
+
+
+def install_skills(qgis_workspace: str, local_workspace: str | None = None) -> None:
+    """Copy bundled skills into ~/.claude/skills, rendering path placeholders.
+
+    Copies (never symlinks): Claude Code's skill scanner does not follow
+    symlinked directories. Re-run after a git pull to update.
+    """
+    if not SKILLS_SRC.is_dir():
+        print("  [skip] no claude_skills/ directory in this repo")
+        return
+    local_ws = local_workspace or qgis_workspace
+    target_root = claude_skills_dir()
+    for src in sorted(p for p in SKILLS_SRC.iterdir() if p.is_dir()):
+        target = target_root / src.name
+        if target.exists():
+            shutil.rmtree(target)
+        shutil.copytree(src, target, ignore=shutil.ignore_patterns("__pycache__"))
+        tpl = target / "SKILL.md.tpl"
+        if tpl.exists():
+            rendered = _render_skill_template(
+                tpl.read_text(encoding="utf-8"), qgis_workspace, local_ws
+            )
+            (target / "SKILL.md").write_text(rendered, encoding="utf-8")
+            tpl.unlink()
+        print(f"  [ok] skill installed: {target}")
+    try:  # best-effort: the workspace may live on a side we can't write from here
+        Path(local_ws).mkdir(parents=True, exist_ok=True)
+    except OSError:
+        print(f"  [note] create the workspace folder yourself: {local_ws}")
+
+
+def uninstall_skills() -> None:
+    if not SKILLS_SRC.is_dir():
+        return
+    for src in sorted(p for p in SKILLS_SRC.iterdir() if p.is_dir()):
+        target = claude_skills_dir() / src.name
+        if target.exists():
+            shutil.rmtree(target)
+            print(f"  [ok] skill removed: {target}")
+
+
+def interactive_skills_choice() -> tuple[bool, str, str | None]:
+    choice = (
+        input("\nInstall Claude Code skills (guided report/map workflows)? [y/N]: ")
+        .strip()
+        .lower()
+    )
+    if choice != "y":
+        return False, "", None
+    default_ws = str(_home() / "qgis-mcp-workspace")
+    qgis_ws = input(f"Workspace folder as QGIS sees it [{default_ws}]: ").strip() or default_ws
+    local_ws = (
+        input("Same folder as YOUR shell sees it (Enter if identical): ").strip() or None
+    )
+    return True, qgis_ws, local_ws
+
+
 # ── Main ────────────────────────────────────────────────────────────────────
 
 
@@ -470,6 +557,21 @@ def main() -> None:
         "--remote", action="store_true", help="Use uvx from GitHub instead of local uv run"
     )
     parser.add_argument("--uninstall", action="store_true", help="Remove plugin and client configs")
+    parser.add_argument(
+        "--skills",
+        action="store_true",
+        help="Install bundled Claude Code skills into ~/.claude/skills",
+    )
+    parser.add_argument(
+        "--qgis-workspace",
+        help="Workspace folder for report/map artifacts, as QGIS sees it "
+        "(required with --skills in non-interactive mode)",
+    )
+    parser.add_argument(
+        "--local-workspace",
+        help="The same workspace as the Claude Code shell sees it "
+        "(omit when both sides share one path, e.g. same machine)",
+    )
     args = parser.parse_args()
 
     qgis_ver = args.qgis_version
@@ -516,6 +618,24 @@ def main() -> None:
                 unconfigure_client(client)
             else:
                 configure_client(client, remote)
+
+    # ── Claude Code skills ──
+    if args.uninstall:
+        if args.skills or not args.non_interactive:
+            print("\n[skills] Removing Claude Code skills...")
+            uninstall_skills()
+    elif args.skills or not args.non_interactive:
+        if args.non_interactive:
+            if not args.qgis_workspace:
+                sys.exit("--skills (non-interactive) requires --qgis-workspace")
+            do_skills, qgis_ws, local_ws = True, args.qgis_workspace, args.local_workspace
+        elif args.skills and args.qgis_workspace:
+            do_skills, qgis_ws, local_ws = True, args.qgis_workspace, args.local_workspace
+        else:
+            do_skills, qgis_ws, local_ws = interactive_skills_choice()
+        if do_skills:
+            print("\n[skills] Installing Claude Code skills...")
+            install_skills(qgis_ws, local_ws)
 
     # ── Summary ──
     print("\n" + "=" * 50)
