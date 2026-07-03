@@ -393,8 +393,9 @@ def find_detail_window(layer_id, window_m=12000, grid=64, **kwargs):
     nx = ny = 400
     blk = dp.block(1, ext, nx, ny)
     nd = dp.sourceNoDataValue(1)
-    win_x = max(2, int(round(window_m / (ext.width() * _m_per_unit(lyr.crs(), ext)) * nx)))
-    win_y = max(2, int(round(window_m / (ext.height() * _m_per_unit(lyr.crs(), ext)) * ny)))
+    mx, my = _m_per_unit_xy(lyr.crs(), ext)
+    win_x = max(2, int(round(window_m / (ext.width() * mx) * nx)))
+    win_y = max(2, int(round(window_m / (ext.height() * my) * ny)))
     best, bi, bj = -1.0, 0, 0
     step_i = max(1, win_y // 4)
     step_j = max(1, win_x // 4)
@@ -426,11 +427,12 @@ def find_detail_window(layer_id, window_m=12000, grid=64, **kwargs):
             "valid_fraction": round(best, 3)}
 
 
-def _m_per_unit(crs, ext):
+def _m_per_unit_xy(crs, ext):
+    """Meters per map unit along x and y — geographic degrees differ per axis."""
     if crs.mapUnits() == QgsUnitTypes.DistanceMeters:
-        return 1.0
-    # geographic: meters per degree longitude at mid-latitude
-    return 111319.49 * math.cos(math.radians(ext.center().y()))
+        return 1.0, 1.0
+    lat = math.radians(ext.center().y())
+    return 111319.49 * math.cos(lat), 111132.95 - 559.85 * math.cos(2 * lat)
 
 
 def apply_quantile_style(
