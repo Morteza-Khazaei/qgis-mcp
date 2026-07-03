@@ -2315,6 +2315,187 @@ def style_map_prompt(layer_id: str, field: str) -> list[UserMessage]:
 
 
 # ===========================================================================
+# Report-layout tools — standard cartographic map figures for report workflows
+# ===========================================================================
+
+
+@mcp.tool(
+    title="Create Standard Map Layout",
+    description="Build a complete standard report-map layout in ONE call: main map + "
+    "detail inset with red footprint box, WGS-84 graticule with labeled ticks, large "
+    "north arrow (top-right in-view), small auto-sized km scale bar (bottom-left "
+    "in-view), legend pruned to the shown layers, title and CRS footer. A4 landscape. "
+    "layer_ids draw top-first; detail_extent [xmin,ymin,xmax,ymax] in project CRS "
+    "(use find_detail_window). Replaces any same-named layout.",
+)
+async def create_standard_map_layout(
+    ctx: Context,
+    name: str,
+    layer_ids: list[str],
+    title: str,
+    footer: str,
+    legend_title: str | None = None,
+    inset_layer_ids: list[str] | None = None,
+    detail_extent: list[float] | None = None,
+    detail_note: str | None = None,
+    graticule: bool = True,
+    north_arrow: bool = True,
+    scalebar: bool = True,
+    legend: bool = True,
+    inset: bool = True,
+) -> dict:
+    return await _send(
+        "create_standard_map_layout",
+        {
+            "name": name,
+            "layer_ids": layer_ids,
+            "title": title,
+            "footer": footer,
+            "legend_title": legend_title,
+            "inset_layer_ids": inset_layer_ids,
+            "detail_extent": detail_extent,
+            "detail_note": detail_note,
+            "graticule": graticule,
+            "north_arrow": north_arrow,
+            "scalebar": scalebar,
+            "legend": legend,
+            "inset": inset,
+        },
+        timeout=60,
+    )
+
+
+@mcp.tool(
+    title="Duplicate Map Layout",
+    description="Duplicate a verified standard layout for another variable: swap the "
+    "shown layers, title, footer, detail window and legend while keeping every piece "
+    "of furniture and geometry identical. This is how a report maps each variable "
+    "separately in the same visual system.",
+)
+async def duplicate_map_layout(
+    ctx: Context,
+    template_name: str,
+    new_name: str,
+    layer_ids: list[str],
+    title: str,
+    footer: str | None = None,
+    legend_title: str | None = None,
+    inset_layer_ids: list[str] | None = None,
+    detail_extent: list[float] | None = None,
+    detail_note: str | None = None,
+) -> dict:
+    return await _send(
+        "duplicate_map_layout",
+        {
+            "template_name": template_name,
+            "new_name": new_name,
+            "layer_ids": layer_ids,
+            "title": title,
+            "footer": footer,
+            "legend_title": legend_title,
+            "inset_layer_ids": inset_layer_ids,
+            "detail_extent": detail_extent,
+            "detail_note": detail_note,
+        },
+        timeout=60,
+    )
+
+
+@mcp.tool(
+    title="Find Detail Window",
+    annotations=ToolAnnotations(readOnlyHint=True),
+    description="Find the densest-valid-data square window of a raster layer (default "
+    "12x12 km) — the right place for a report map's detail inset. Treats nodata and 0 "
+    "as invalid. Returns the extent in PROJECT CRS, ready for detail_extent.",
+)
+async def find_detail_window(
+    ctx: Context,
+    layer_id: str,
+    window_m: float = 12000,
+) -> dict:
+    return await _send(
+        "find_detail_window",
+        {"layer_id": layer_id, "window_m": window_m},
+        timeout=60,
+    )
+
+
+@mcp.tool(
+    title="Apply Quantile Style",
+    description="Style a continuous raster with N quantile classes (Discrete shader) "
+    "and clean legend labels like 'Very Low (< 17)' ... 'Very High (> 37)'. min_valid "
+    "excludes a mask floor (e.g. 0 = non-data) from the breaks. ramp: any QGIS style "
+    "ramp name (RdYlGn for performance, Viridis for neutral sequential).",
+)
+async def apply_quantile_style(
+    ctx: Context,
+    layer_id: str,
+    classes: int = 5,
+    ramp: str = "RdYlGn",
+    class_names: list[str] | None = None,
+    decimals: int = 0,
+    min_valid: float = 0.0,
+) -> dict:
+    return await _send(
+        "apply_quantile_style",
+        {
+            "layer_id": layer_id,
+            "classes": classes,
+            "ramp": ramp,
+            "class_names": class_names,
+            "decimals": decimals,
+            "min_valid": min_valid,
+        },
+        timeout=60,
+    )
+
+
+@mcp.tool(
+    title="Apply Hillshade Context",
+    description="Create the elevation+hillshade context pair from a DEM file path: "
+    "color relief (1-99 percentile stretch, whole-number legend labels) plus a "
+    "hillshade layer multiplied on top at 50% opacity. Returns layer ids; pass "
+    "main_view_layer_ids straight to create_standard_map_layout.",
+)
+async def apply_hillshade_context(
+    ctx: Context,
+    dem_source: str,
+    ramp: str = "Viridis",
+    z_factor: float = 3.0,
+    opacity: float = 0.5,
+    layer_name: str = "Elevation (m a.s.l.)",
+) -> dict:
+    return await _send(
+        "apply_hillshade_context",
+        {
+            "dem_source": dem_source,
+            "ramp": ramp,
+            "z_factor": z_factor,
+            "opacity": opacity,
+            "layer_name": layer_name,
+        },
+        timeout=60,
+    )
+
+
+@mcp.tool(
+    title="Save Layout Template",
+    annotations=ToolAnnotations(idempotentHint=True),
+    description="Save a verified print layout as a .qpt template file for reuse "
+    "across projects (parent folders are created).",
+)
+async def save_layout_template(
+    ctx: Context,
+    layout_name: str,
+    path: str,
+) -> dict:
+    return await _send(
+        "save_layout_template",
+        {"layout_name": layout_name, "path": path},
+    )
+
+
+# ===========================================================================
 # Entry point
 # ===========================================================================
 

@@ -466,6 +466,14 @@ class QgisMCPServer(QObject):
                 "set_layer_order": self.set_layer_order,
             }
 
+            # Report-layout tools (standard map figures for the geo-report
+            # workflow). Handlers are plain functions in their own module.
+            try:
+                from . import report_layouts
+            except ImportError:
+                from qgis_mcp_plugin import report_layouts
+            handlers.update(report_layouts.HANDLERS)
+
             handler = handlers.get(cmd_type)
             if handler:
                 try:
