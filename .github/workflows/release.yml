@@ -1,0 +1,27 @@
+name: Release QGIS Plugin
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build plugin ZIP
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ASSET_NAME="qgis_mcp_plugin_v${VERSION//./-}.zip"
+          zip -r "$ASSET_NAME" qgis_mcp_plugin/ -x "qgis_mcp_plugin/__pycache__/*"
+          echo "ASSET_NAME=$ASSET_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ASSET_NAME }}

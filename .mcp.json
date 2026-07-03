@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "qgis": {
+      "command": "uv",
+      "args": ["run", "--no-sync", "src/qgis_mcp/server.py"]
+    }
+  }
+}

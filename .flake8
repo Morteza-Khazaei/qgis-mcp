@@ -1,0 +1,18 @@
+# Mirrors the QGIS Plugin Repository's upload-time code-quality check so the
+# same issues are caught locally BEFORE upload. ruff (see pyproject.toml) does
+# not implement W503/W504, but the QGIS uploader enables W503 — run flake8 too.
+#
+#   flake8 qgis_mcp_plugin/
+#
+# W503 (line break before binary operator): the QGIS checker flags it even
+# though Black/ruff produce it. Resolve by refactoring the boolean onto fewer
+# lines (extract sub-expressions) rather than breaking across the operator.
+[flake8]
+max-line-length = 120
+extend-select = W503
+# D: flake8-docstrings nags — not part of the QGIS uploader check
+extend-ignore = E501,D
+exclude = .venv,build,dist,__pycache__
+# tests insert src/ into sys.path before importing the client
+per-file-ignores =
+    tests/*: E402
