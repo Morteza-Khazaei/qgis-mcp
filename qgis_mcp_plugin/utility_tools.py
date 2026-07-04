@@ -25,6 +25,20 @@ from qgis.core import (
 from qgis.PyQt.QtXml import QDomDocument
 
 
+def _cpp_owned(obj):
+    """Strip Python-side ownership from a QGIS-managed object (QGIS 4.2's
+    bindings return layout wrappers that wrongly own the C++ object; a GC'd
+    wrapper then deletes the real layout and later access crashes QGIS).
+    Safe no-op on QGIS 3."""
+    if obj is not None:
+        try:
+            from qgis.PyQt import sip
+            sip.transferto(obj, None)
+        except Exception:
+            pass
+    return obj
+
+
 def _project():
     return QgsProject.instance()
 
@@ -218,6 +232,7 @@ def load_layout_template(path, name, replacements=None, **kwargs):
     layout.setName(name)
     if not lm.addLayout(layout):
         raise RuntimeError(f"Could not add layout {name}")
+    _cpp_owned(layout)
     return {"layout": name, "items_loaded": len(list(layout.items()))}
 
 

@@ -42,6 +42,12 @@ from qgis.core import (
 )
 from qgis.PyQt.QtGui import QColor, QFont, QPainter
 
+try:  # Qt6 (QGIS 4) scoped enum vs Qt5 (QGIS 3) flat enum
+    PAINTER_MULTIPLY = QPainter.CompositionMode.CompositionMode_Multiply
+except AttributeError:
+    PAINTER_MULTIPLY = QPainter.CompositionMode_Multiply
+
+
 # Furniture geometry (mm) for A4 landscape 297x210 — the tuned reference build.
 GEOM = {
     "main_map": (18, 14, 186, 160),
@@ -53,6 +59,20 @@ GEOM = {
     "scalebar": (22, 164, 70, 12),   # small: slim bar inside main view, bottom-left
     "north": (182, 17, 18, 24),      # large arrow inside main view, top-right
 }
+
+
+def _cpp_owned(obj):
+    """Strip Python-side ownership from a QGIS-managed object (QGIS 4.2's
+    bindings return layout wrappers that wrongly own the C++ object; a GC'd
+    wrapper then deletes the real layout and later access crashes QGIS).
+    Safe no-op on QGIS 3."""
+    if obj is not None:
+        try:
+            from qgis.PyQt import sip
+            sip.transferto(obj, None)
+        except Exception:
+            pass
+    return obj
 
 
 def _project():
@@ -235,6 +255,7 @@ def create_standard_map_layout(
     layout.setName(name)
     if not lm.addLayout(layout):
         raise RuntimeError(f"Could not add layout {name}")
+    _cpp_owned(layout)
 
     main_layers = _layers(layer_ids)
     inset_layers = _layers(inset_layer_ids) if inset_layer_ids else main_layers
@@ -328,13 +349,13 @@ def duplicate_map_layout(
     layers, title, footer, detail window and legend. Furniture stays identical."""
     proj = _project()
     lm = proj.layoutManager()
-    tpl = lm.layoutByName(template_name)
+    tpl = _cpp_owned(lm.layoutByName(template_name))
     if tpl is None:
         raise ValueError(f"Template layout not found: {template_name}")
     old = lm.layoutByName(new_name)
     if old is not None:
         lm.removeLayout(old)
-    layout = lm.duplicateLayout(tpl, new_name)
+    layout = _cpp_owned(lm.duplicateLayout(tpl, new_name))
     if layout is None:
         raise RuntimeError("duplicateLayout failed")
 
@@ -488,7 +509,7 @@ def apply_hillshade_context(dem_source, ramp="Viridis", z_factor=3.0, opacity=0.
     r = QgsHillshadeRenderer(hs.dataProvider(), 1, 315, 45)
     r.setZFactor(z_factor)
     hs.setRenderer(r)
-    hs.setBlendMode(QPainter.CompositionMode_Multiply)
+    hs.setBlendMode(PAINTER_MULTIPLY)
     hs.renderer().setOpacity(opacity)
     proj.addMapLayer(hs)
 
@@ -520,7 +541,7 @@ def save_layout_template(layout_name, path, **kwargs):
     """Save a verified layout as a .qpt template for reuse across projects."""
     from qgis.core import QgsReadWriteContext
     lm = _project().layoutManager()
-    layout = lm.layoutByName(layout_name)
+    layout = _cpp_owned(lm.layoutByName(layout_name))
     if layout is None:
         raise ValueError(f"Layout not found: {layout_name}")
     os.makedirs(os.path.dirname(path), exist_ok=True)

@@ -152,6 +152,22 @@ _MAX_MESSAGE_SIZE = 10 * 1024 * 1024  # 10 MB
 _HEADER_STRUCT = struct.Struct(">I")
 
 
+def _cpp_owned(obj):
+    """Strip Python-side ownership from a QGIS-managed object.
+
+    QGIS 4.2's bindings return layout wrappers that wrongly claim ownership of
+    the C++ object; when Python GC collects such a wrapper it DELETES the real
+    layout (layouts silently vanish), and any remaining reference dangles —
+    the access-violation crash. Transferring to None makes C++ the sole owner.
+    Safe no-op on QGIS 3.
+    """
+    if obj is not None:
+        with contextlib.suppress(Exception):
+            from qgis.PyQt import sip
+            sip.transferto(obj, None)
+    return obj
+
+
 class QgisMCPServer(QObject):
     """Server class to handle socket connections and execute QGIS commands"""
 
@@ -1850,6 +1866,7 @@ class QgisMCPServer(QObject):
         manager = QgsProject.instance().layoutManager()
         layouts = []
         for layout in manager.layouts():
+            _cpp_owned(layout)
             layouts.append(
                 {
                     "name": layout.name(),
@@ -1860,7 +1877,7 @@ class QgisMCPServer(QObject):
 
     def export_layout(self, layout_name, path, format="pdf", dpi=300, **kwargs):
         manager = QgsProject.instance().layoutManager()
-        layout = manager.layoutByName(layout_name)
+        layout = _cpp_owned(manager.layoutByName(layout_name))
         if not layout:
             raise Exception(f"Layout not found: {layout_name}")
 
@@ -2517,12 +2534,13 @@ class QgisMCPServer(QObject):
         layout.initializeDefaults()
         layout.setName(name)
         project.layoutManager().addLayout(layout)
+        _cpp_owned(layout)
         return {"ok": True, "name": name}
 
     def add_layout_map(self, layout_name, x, y, width, height, **kwargs):
         """Add a map item to a print layout."""
         manager = QgsProject.instance().layoutManager()
-        layout = manager.layoutByName(layout_name)
+        layout = _cpp_owned(manager.layoutByName(layout_name))
         if not layout:
             raise Exception(f"Layout not found: {layout_name}")
 
@@ -2542,7 +2560,7 @@ class QgisMCPServer(QObject):
         layout = QgsProject.instance().layoutManager().layoutByName(layout_name)
         if not layout:
             raise Exception(f"Layout not found: {layout_name}")
-        return layout
+        return _cpp_owned(layout)
 
     def _find_layout_map(self, layout, map_item_id=None):
         """Find a map item in a layout by id/uuid, else the first map item."""
@@ -2765,7 +2783,7 @@ class QgisMCPServer(QObject):
     def remove_layout(self, layout_name, **kwargs):
         """Remove a print layout from the project."""
         manager = QgsProject.instance().layoutManager()
-        layout = manager.layoutByName(layout_name)
+        layout = _cpp_owned(manager.layoutByName(layout_name))
         if not layout:
             raise Exception(f"Layout not found: {layout_name}")
         manager.removeLayout(layout)
