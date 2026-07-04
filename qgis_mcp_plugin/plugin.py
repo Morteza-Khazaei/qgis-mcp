@@ -3252,7 +3252,7 @@ class MCPConfiguratorDialog(QDialog):
         # Zip archive instead of git+ URL: uvx then needs no git executable,
         # which is not visible to GUI-spawned MCP servers (e.g. Claude Desktop
         # on Windows).
-        self.github_url = "https://github.com/nkarasiak/qgis-mcp/archive/refs/heads/main.zip"
+        self.github_url = "https://github.com/Morteza-Khazaei/qgis-mcp/archive/refs/heads/main.zip"
 
         self.init_ui()
         self.refresh_status()
