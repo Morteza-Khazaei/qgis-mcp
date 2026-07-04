@@ -82,7 +82,17 @@ def _client_registry() -> dict[str, ClientInfo]:
             home / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
         )
     elif sys.platform == "win32":
+        # Microsoft-Store (MSIX-packaged) Claude Desktop virtualizes %APPDATA%:
+        # the app reads Packages\Claude_*\LocalCache\Roaming\Claude, so writing
+        # to the plain %APPDATA% path silently does nothing for it.
         claude_cfg = appdata / "Claude" / "claude_desktop_config.json"
+        packages = Path(os.environ.get("LOCALAPPDATA", home / "AppData" / "Local")) / "Packages"
+        if packages.is_dir():
+            for pkg in sorted(packages.glob("Claude_*")):
+                packaged = pkg / "LocalCache" / "Roaming" / "Claude"
+                if packaged.is_dir():
+                    claude_cfg = packaged / "claude_desktop_config.json"
+                    break
     else:
         claude_cfg = home / ".config" / "Claude" / "claude_desktop_config.json"
 

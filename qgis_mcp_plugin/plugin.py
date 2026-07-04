@@ -3160,6 +3160,26 @@ class QgisMCPServer(QObject):
         return {"output_layer_id": out.id(), "name": out.name()}
 
 
+def _windows_claude_desktop_cfg(appdata):
+    """Claude Desktop config path on Windows, handling MSIX-packaged installs.
+
+    The Microsoft-Store (packaged) build virtualizes %APPDATA%: the app reads
+    Packages\\Claude_*\\LocalCache\\Roaming\\Claude, so writing to the plain
+    %APPDATA%\\Claude path silently does nothing for it. Prefer the packaged
+    location whenever one exists.
+    """
+    localappdata = Path(
+        os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))
+    )
+    packages = localappdata / "Packages"
+    if packages.is_dir():
+        for pkg in sorted(packages.glob("Claude_*")):
+            packaged = pkg / "LocalCache" / "Roaming" / "Claude"
+            if packaged.is_dir():
+                return packaged / "claude_desktop_config.json"
+    return appdata / "Claude" / "claude_desktop_config.json"
+
+
 def _client_config_registry(repo_dir):
     """Map client name -> {path, key} (or {print_only}) for MCP config files.
 
@@ -3177,7 +3197,7 @@ def _client_config_registry(repo_dir):
             home / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
         )
     elif sys.platform == "win32":
-        claude_cfg = appdata / "Claude" / "claude_desktop_config.json"
+        claude_cfg = _windows_claude_desktop_cfg(appdata)
     else:
         claude_cfg = home / ".config" / "Claude" / "claude_desktop_config.json"
 
