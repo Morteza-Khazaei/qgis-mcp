@@ -3253,8 +3253,22 @@ class MCPConfiguratorDialog(QDialog):
         # which is not visible to GUI-spawned MCP servers (e.g. Claude Desktop
         # on Windows).
         self.github_url = "https://github.com/Morteza-Khazaei/qgis-mcp/archive/refs/heads/main.zip"
+        self._existing_entry = None  # the on-disk "qgis" entry for the client
+        self._existing_file = ""
 
         self.init_ui()
+        # Restore the client picked last time — the dialog is rebuilt on every
+        # open, so without this it always reverted to the first combo item and
+        # showed the default command instead of the applied configuration.
+        saved_client = QgsSettings().value(
+            f"{QgisMCPPlugin.SETTINGS_PREFIX}/configurator_client", "", type=str
+        )
+        if saved_client:
+            idx = self.client_combo.findText(saved_client)
+            if idx >= 0:
+                self.client_combo.blockSignals(True)
+                self.client_combo.setCurrentIndex(idx)
+                self.client_combo.blockSignals(False)
         self.refresh_status()
 
     def init_ui(self):
@@ -3393,7 +3407,7 @@ class MCPConfiguratorDialog(QDialog):
         action_row.addStretch()
         github_btn = QPushButton("Open GitHub")
         github_btn.clicked.connect(
-            lambda: QDesktopServices.openUrl(QUrl("https://github.com/nkarasiak/qgis-mcp"))
+            lambda: QDesktopServices.openUrl(QUrl("https://github.com/Morteza-Khazaei/qgis-mcp"))
         )
         action_row.addWidget(github_btn)
         close_btn = QPushButton("Close")
@@ -3426,7 +3440,22 @@ class MCPConfiguratorDialog(QDialog):
         return None
 
     def _on_client_changed(self):
+        QgsSettings().setValue(
+            f"{QgisMCPPlugin.SETTINGS_PREFIX}/configurator_client",
+            self.client_combo.currentText(),
+        )
         self.refresh_status()
+
+    def _sync_widgets_from_entry(self, entry):
+        """Mirror an existing on-disk entry in the option widgets, so reopening
+        the dialog reflects the applied configuration instead of defaults."""
+        blob = json.dumps(entry)
+        self.mode_combo.blockSignals(True)
+        self.mode_combo.setCurrentIndex(0 if "uvx" in blob else 1)
+        self.mode_combo.blockSignals(False)
+        self.refresh_check.blockSignals(True)
+        self.refresh_check.setChecked("--refresh-package" in blob)
+        self.refresh_check.blockSignals(False)
 
     def _copy_preview(self):
         QgsApplication.clipboard().setText(self.preview_edit.toPlainText())
@@ -3503,6 +3532,18 @@ class MCPConfiguratorDialog(QDialog):
             self.preview_edit.setPlainText(cmd)
             return
 
+        if self._existing_entry is not None:
+            # Show the truth on disk, not the template: this is what the user
+            # applied earlier (possibly with other options or an older URL).
+            self.preview_label.setText(
+                f"Currently configured in {self._existing_file} "
+                "(Apply Config rewrites it with the options above):"
+            )
+            self.preview_edit.setPlainText(
+                json.dumps({"qgis": self._existing_entry}, indent=2)
+            )
+            return
+
         self.preview_label.setText("Add to your client config file:")
         entry = self._get_server_entry(client, remote, refresh)
         self.preview_edit.setPlainText(json.dumps({"qgis": entry}, indent=2))
@@ -3523,11 +3564,15 @@ class MCPConfiguratorDialog(QDialog):
         path = info["path"]
         key = info["key"]
 
+        self._existing_entry = None
+        self._existing_file = path.name
         if path.exists():
             try:
                 with open(path, encoding="utf-8") as f:
                     data = json.load(f)
                 if key in data and "qgis" in data[key]:
+                    self._existing_entry = data[key]["qgis"]
+                    self._sync_widgets_from_entry(self._existing_entry)
                     self.status_label.setText(f"Status: Configured in {path.name}")
                     self.status_label.setStyleSheet("color: green;")
                 else:
@@ -3742,7 +3787,7 @@ class QgisMCPPlugin:
         btn_layout = QHBoxLayout()
         github_btn = QPushButton("Open GitHub")
         github_btn.clicked.connect(
-            lambda: QDesktopServices.openUrl(QUrl("https://github.com/nkarasiak/qgis-mcp"))
+            lambda: QDesktopServices.openUrl(QUrl("https://github.com/Morteza-Khazaei/qgis-mcp"))
         )
         configure_btn = QPushButton("Open Configurator")
         configure_btn.clicked.connect(dlg.accept)
