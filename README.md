@@ -134,6 +134,16 @@ You have access to QGIS tools. Do the following:
 7. Save the project
 ```
 
+## QGIS on Windows, client in WSL2?
+
+`localhost` in WSL2 does **not** reach Windows under default NAT networking, and the
+upstream plugin only binds `127.0.0.1`. This fork adds an **"Allow external
+connections (bind 0.0.0.0)"** checkbox in the plugin's toolbar dropdown — enable it,
+open the firewall for the plugin port, and point `QGIS_MCP_HOST` at the Windows host
+IP. Full walkthrough (including the `netsh` dual-port proxy fallback for upstream
+builds, the `WinError 10013` trap, and automation scripts `scripts/setup-windows.ps1`
++ `scripts/setup-wsl.sh`): **[docs/WSL_SETUP.md](docs/WSL_SETUP.md)**.
+
 ## Claude Code skills (optional)
 
 The repo bundles agent skills under `claude_skills/` that teach Claude Code guided

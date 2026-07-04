@@ -3623,9 +3623,33 @@ class QgisMCPPlugin:
         port_wa = QWidgetAction(self.iface.mainWindow())
         port_wa.setDefaultWidget(port_widget)
 
+        # Bind-address checkbox: default binds 127.0.0.1 (Windows-only). WSL2 /
+        # other machines can't reach a loopback-only socket — checking this
+        # binds 0.0.0.0 so no netsh portproxy is needed (set QGIS_MCP_TOKEN for
+        # auth when exposing the socket beyond localhost).
+        settings = QgsSettings()
+        self.allhosts_cb = QCheckBox("Allow external connections (bind 0.0.0.0)")
+        self.allhosts_cb.setToolTip(
+            "Listen on all interfaces so WSL2 or another machine can connect "
+            "directly.\nRecommended: set the QGIS_MCP_TOKEN environment variable "
+            "on both sides when enabling this."
+        )
+        self.allhosts_cb.setChecked(
+            settings.value(f"{self.SETTINGS_PREFIX}/bind_all", False, type=bool)
+        )
+        self.allhosts_cb.toggled.connect(self._save_bind_all)
+
+        allhosts_widget = QWidget()
+        allhosts_layout = QHBoxLayout()
+        allhosts_layout.setContentsMargins(6, 4, 6, 4)
+        allhosts_layout.addWidget(self.allhosts_cb)
+        allhosts_widget.setLayout(allhosts_layout)
+
+        allhosts_wa = QWidgetAction(self.iface.mainWindow())
+        allhosts_wa.setDefaultWidget(allhosts_widget)
+
         # Auto-start checkbox
         self.autostart_cb = QCheckBox("Auto-start on startup")
-        settings = QgsSettings()
         self.autostart_cb.setChecked(
             settings.value(f"{self.SETTINGS_PREFIX}/autostart", False, type=bool)
         )
@@ -3645,6 +3669,7 @@ class QgisMCPPlugin:
 
         menu = QMenu()
         menu.addAction(port_wa)
+        menu.addAction(allhosts_wa)
         menu.addAction(autostart_wa)
         menu.addSeparator()
         menu.addAction(configure_action)
@@ -3741,6 +3766,10 @@ class QgisMCPPlugin:
     def _save_port(self, port):
         """Persist port preference."""
         QgsSettings().setValue(f"{self.SETTINGS_PREFIX}/port", port)
+
+    def _save_bind_all(self, checked):
+        """Persist bind-address preference (0.0.0.0 vs localhost)."""
+        QgsSettings().setValue(f"{self.SETTINGS_PREFIX}/bind_all", checked)
 
     def _green_logo_icon(self):
         """Load the green MCP logo for active state."""
@@ -3869,14 +3898,16 @@ class QgisMCPPlugin:
     def toggle_server(self, checked):
         if checked:
             port = self.port_spin.value()
+            host = "0.0.0.0" if self.allhosts_cb.isChecked() else _DEFAULT_HOST
             self.server = QgisMCPServer(
-                port=port, iface=self.iface, on_clients_changed=self._on_clients_changed
+                host=host, port=port, iface=self.iface, on_clients_changed=self._on_clients_changed
             )
             if self.server.start():
                 self.action.setIcon(self._green_logo_icon())
                 self.action.setText(f"MCP :{port}")
-                self.action.setToolTip(f"MCP server running on :{port} — click to stop")
+                self.action.setToolTip(f"MCP server running on {host}:{port} — click to stop")
                 self.port_spin.setEnabled(False)
+                self.allhosts_cb.setEnabled(False)
             else:
                 self.server = None
                 self.action.setChecked(False)
@@ -3888,6 +3919,7 @@ class QgisMCPPlugin:
             self.action.setText("Run MCP")
             self.action.setToolTip("Start MCP server")
             self.port_spin.setEnabled(True)
+            self.allhosts_cb.setEnabled(True)
 
     def unload(self):
         if self.server:
