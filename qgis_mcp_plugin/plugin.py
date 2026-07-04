@@ -509,13 +509,15 @@ class QgisMCPServer(QObject):
                 "set_layer_order": self.set_layer_order,
             }
 
-            # Report-layout tools (standard map figures for the geo-report
-            # workflow). Handlers are plain functions in their own module.
+            # Extension modules: report-layout tools (standard map figures) and
+            # utility tools (discovery, edit sessions, style introspection,
+            # layout templates, async tasks). Handlers are plain functions.
             try:
-                from . import report_layouts
+                from . import report_layouts, utility_tools
             except ImportError:
-                from qgis_mcp_plugin import report_layouts
+                from qgis_mcp_plugin import report_layouts, utility_tools
             handlers.update(report_layouts.HANDLERS)
+            handlers.update(utility_tools.HANDLERS)
 
             handler = handlers.get(cmd_type)
             if handler:
@@ -1216,11 +1218,16 @@ class QgisMCPServer(QObject):
                 f.setGeometry(QgsGeometry.fromWkt(wkt))
             qgs_features.append(f)
 
-        ok, added = dp.addFeatures(qgs_features)
+        if layer.isEditable():
+            # Edit session (begin_edits): buffer the change so it is revertible.
+            ok = layer.addFeatures(qgs_features)
+            added = qgs_features
+        else:
+            ok, added = dp.addFeatures(qgs_features)
         if not ok:
             raise Exception("Failed to add features")
         layer.updateExtents()
-        return {"added": len(added)}
+        return {"added": len(added), "buffered": layer.isEditable()}
 
     def update_features(self, layer_id, updates, **kwargs):
         layer = self._get_vector_layer(layer_id)
@@ -1238,10 +1245,16 @@ class QgisMCPServer(QObject):
                 attr_map[fid] = field_map
 
         if attr_map:
-            ok = dp.changeAttributeValues(attr_map)
+            if layer.isEditable():
+                ok = all(
+                    layer.changeAttributeValues(fid, field_map)
+                    for fid, field_map in attr_map.items()
+                )
+            else:
+                ok = dp.changeAttributeValues(attr_map)
             if not ok:
                 raise Exception("Failed to update features")
-        return {"updated": len(attr_map)}
+        return {"updated": len(attr_map), "buffered": layer.isEditable()}
 
     def delete_features(self, layer_id, fids=None, expression=None, **kwargs):
         layer = self._get_vector_layer(layer_id)
@@ -1256,11 +1269,14 @@ class QgisMCPServer(QObject):
         else:
             raise Exception("Either fids or expression must be provided")
 
-        ok = dp.deleteFeatures(target_fids)
+        if layer.isEditable():
+            ok = layer.deleteFeatures(target_fids)
+        else:
+            ok = dp.deleteFeatures(target_fids)
         if not ok:
             raise Exception("Failed to delete features")
         layer.updateExtents()
-        return {"deleted": len(target_fids)}
+        return {"deleted": len(target_fids), "buffered": layer.isEditable()}
 
     def set_layer_style(
         self, layer_id, style_type, field=None, classes=5, color_ramp="Spectral", **kwargs

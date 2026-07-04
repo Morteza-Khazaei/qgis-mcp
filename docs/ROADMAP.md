@@ -1,8 +1,8 @@
 # Tool coverage & roadmap
 
-*Status: v0.6.1 (2026-07-03) — 110 plugin commands / 108 MCP tools.*
+*Status: v0.7.0 (2026-07-03) — 119 plugin commands / 117 MCP tools.*
 
-## What is already implemented (110 commands)
+## What is already implemented (119 commands)
 
 | Category | # | Commands |
 |---|---|---|
@@ -30,16 +30,16 @@ hatch, or that cost many error-prone round-trips.
 ## What is missing (prioritized)
 
 ### Tier 1 — safety & state (highest value: AI makes mistakes)
-| Proposed tool | Why |
+| Proposed tool | Status |
 |---|---|
-| `begin_edits` / `commit_edits` / `rollback_edits` | Wrap vector edits in an edit session so a bad AI edit is revertible; today `add/update/delete_features` commit immediately. |
-| `snapshot_project` / `restore_snapshot` | One-call save-point before risky multi-step operations (styling, layout surgery). |
-| `start_task` / `task_status` / `cancel_task` | Async QgsTask wrapper: long Processing runs currently block against a 60 s timeout — big rasters need submit-and-poll. |
+| `begin_edits` / `commit_edits` / `rollback_edits` | **DONE (0.7.0)** — feature edits route through the edit buffer during a session (`buffered: true` in responses) and are revertible. |
+| `snapshot_project` / `restore_snapshot` | Open — one-call save-point before risky multi-step operations. |
+| `start_processing_task` / `task_status` / `cancel_task` | **DONE (0.7.0)** — background QgsTask with progress/log polling; result layers auto-added to the project. |
 
 ### Tier 2 — discovery (critical for shell-less clients like Claude Desktop)
 | Proposed tool | Why |
 |---|---|
-| `list_files(path, pattern)` | Claude Desktop has no shell; it cannot even *find* the user's GeoTIFFs to load. Read-only directory listing closes the gap. |
+| `list_files(path, pattern)` | **DONE (0.7.0)** — read-only listing (name/type/size/mtime). |
 | `list_db_connections` / `list_db_tables` | Browse registered PostGIS/GeoPackage/Spatialite connections and load from them; `execute_sql` only sees already-loaded layers. |
 | `list_style_library` | Enumerate available color ramps, styles, SVG markers — today the AI guesses ramp names ("RdYlGn") and fails on typos. |
 | `geocode(place)` | "Zoom to Saskatoon" — resolve a place name to an extent (Nominatim/locator), the single most common navigation ask. |
@@ -47,14 +47,14 @@ hatch, or that cost many error-prone round-trips.
 ### Tier 3 — introspection (close the read/write asymmetry)
 | Proposed tool | Why |
 |---|---|
-| `get_layer_style` (structured JSON) | `set_layer_style` exists but reading back the current renderer returns nothing usable — "tweak the existing style" requires seeing it. |
+| `get_layer_style` (structured JSON) | **DONE (0.7.0)** — renderer type, hex colors, categories/ranges, raster class breaks, opacity, labeling state. |
 | `get_raster_histogram` | Full-res chunked histogram/percentiles per band; drives honest class breaks without sampling tricks. |
 | `get/set_layer_metadata` | Abstract, keywords, attribution — feeds report "data at a glance" tables. |
 
 ### Tier 4 — layout completeness
 | Proposed tool | Why |
 |---|---|
-| `load_layout_template` | `save_layout_template` exists; the reverse (instantiate a .qpt with layer/text substitution) does not — templates can be saved but not reused programmatically. |
+| `load_layout_template` | **DONE (0.7.0)** — instantiates a .qpt with literal text substitution (XML-escaped). |
 | `add_layout_html/shape/arrow` | Rich report pages (callout boxes, leader lines) currently need execute_code. |
 
 ### Tier 5 — frontier (real QGIS capabilities with zero exposure)
@@ -64,13 +64,12 @@ hatch, or that cost many error-prone round-trips.
 - **Plugin installation** (list/reload exist; install does not — security-sensitive, needs elicitation)
 - **Georeferencing** (GCP-based raster registration)
 
-## Recommended build order
+## Recommended build order (next)
 
-1. `list_files` — unlocks Claude Desktop as a real GIS assistant (one afternoon).
-2. Edit sessions (`begin/commit/rollback_edits`) — makes vector editing safe.
-3. `get_layer_style` — symmetric styling, enables "adjust, don't replace".
-4. `load_layout_template` — completes the template loop the report workflow already half-uses.
-5. Async tasks — removes the 60 s ceiling that blocks basin-scale processing.
+1. `snapshot_project` / `restore_snapshot` — the remaining Tier-1 safety item.
+2. `list_db_connections` / `list_db_tables` — PostGIS/GeoPackage discovery.
+3. `list_style_library` + `geocode` — styling and navigation ergonomics.
+4. `get_raster_histogram` and layer metadata read/write.
 
 Everything in Tiers 1–4 is implementable in the existing handler pattern
 (`plugin.py` dispatch + `server.py` bridge tool), no architectural change needed.

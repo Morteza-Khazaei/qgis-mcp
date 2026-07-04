@@ -2496,6 +2496,121 @@ async def save_layout_template(
 
 
 # ===========================================================================
+# Utility tools — discovery, edit safety, style introspection, templates, tasks
+# ===========================================================================
+
+
+@mcp.tool(
+    title="List Files",
+    annotations=ToolAnnotations(readOnlyHint=True),
+    description="Read-only directory listing on the QGIS machine (name, type, size, "
+    "mtime; directories first; glob pattern filters files). Lets shell-less clients "
+    "discover data files to load.",
+)
+async def list_files(
+    ctx: Context,
+    path: str,
+    pattern: str = "*",
+    max_entries: int = 200,
+) -> dict:
+    return await _send(
+        "list_files", {"path": path, "pattern": pattern, "max_entries": max_entries}
+    )
+
+
+@mcp.tool(
+    title="Begin Edit Session",
+    description="Start an edit session on a vector layer: subsequent add/update/delete "
+    "feature calls buffer their changes so they can be rolled back. Without a session, "
+    "feature edits commit immediately and irreversibly.",
+)
+async def begin_edits(ctx: Context, layer_id: str) -> dict:
+    return await _send("begin_edits", {"layer_id": layer_id})
+
+
+@mcp.tool(
+    title="Commit Edit Session",
+    description="Commit the buffered edits of a layer's edit session to the data "
+    "source. On failure the session is rolled back and the errors are raised.",
+)
+async def commit_edits(ctx: Context, layer_id: str) -> dict:
+    return await _send("commit_edits", {"layer_id": layer_id})
+
+
+@mcp.tool(
+    title="Rollback Edit Session",
+    description="Discard all buffered edits of a layer's edit session — the undo "
+    "button for AI feature editing.",
+)
+async def rollback_edits(ctx: Context, layer_id: str) -> dict:
+    return await _send("rollback_edits", {"layer_id": layer_id})
+
+
+@mcp.tool(
+    title="Get Layer Style",
+    annotations=ToolAnnotations(readOnlyHint=True),
+    description="Structured read of a layer's current symbology: renderer type, "
+    "colors as hex, categorized/graduated classes with labels, raster class breaks, "
+    "opacity, labeling state. The read counterpart of set_layer_style — adjust an "
+    "existing style instead of replacing it blind.",
+)
+async def get_layer_style(ctx: Context, layer_id: str) -> dict:
+    return await _send("get_layer_style", {"layer_id": layer_id})
+
+
+@mcp.tool(
+    title="Load Layout Template",
+    description="Instantiate a saved .qpt template as a new print layout, optionally "
+    "substituting literal text placeholders (replacements maps old->new; values are "
+    "XML-escaped). Completes the loop with save_layout_template. Replaces any "
+    "same-named layout.",
+)
+async def load_layout_template(
+    ctx: Context,
+    path: str,
+    name: str,
+    replacements: dict[str, str] | None = None,
+) -> dict:
+    return await _send(
+        "load_layout_template", {"path": path, "name": name, "replacements": replacements}
+    )
+
+
+@mcp.tool(
+    title="Start Processing Task",
+    description="Run a Processing algorithm as a background task for jobs too big "
+    "for the synchronous execute_processing timeout. Returns a task_id immediately; "
+    "poll with task_status. Result layers are added to the project on success.",
+)
+async def start_processing_task(
+    ctx: Context,
+    algorithm: str,
+    parameters: dict[str, Any],
+) -> dict:
+    return await _send(
+        "start_processing_task", {"algorithm": algorithm, "parameters": parameters}
+    )
+
+
+@mcp.tool(
+    title="Task Status",
+    annotations=ToolAnnotations(readOnlyHint=True),
+    description="Status of a background processing task: running/success/failed/"
+    "canceled, progress percent, last log lines, and results when finished.",
+)
+async def task_status(ctx: Context, task_id: str) -> dict:
+    return await _send("task_status", {"task_id": task_id})
+
+
+@mcp.tool(
+    title="Cancel Task",
+    description="Cancel a running background processing task.",
+)
+async def cancel_task(ctx: Context, task_id: str) -> dict:
+    return await _send("cancel_task", {"task_id": task_id})
+
+
+# ===========================================================================
 # Entry point
 # ===========================================================================
 
