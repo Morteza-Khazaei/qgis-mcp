@@ -44,6 +44,11 @@ except AttributeError:
     MSG_WARNING = Qgis.Warning
 
 try:
+    MSG_SUCCESS = Qgis.MessageLevel.Success
+except AttributeError:
+    MSG_SUCCESS = Qgis.Success
+
+try:
     MSG_CRITICAL = Qgis.MessageLevel.Critical
 except AttributeError:
     MSG_CRITICAL = Qgis.Critical

@@ -11,7 +11,10 @@ import struct
 import sys
 import traceback
 from collections import deque
-from datetime import UTC, datetime
+
+# timezone.utc, not datetime.UTC: the latter needs Python 3.11, but QGIS LTR
+# builds (e.g. 3.40 on macOS) still ship Python 3.9.
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import ClassVar
 
@@ -122,6 +125,7 @@ from .compat import (
     LAYOUT_SUCCESS,
     MSG_CRITICAL,
     MSG_INFO,
+    MSG_SUCCESS,
     MSG_WARNING,
     MSGBOX_ACCEPT_ROLE,
     MSGBOX_QUESTION,
@@ -166,8 +170,45 @@ class QgisMCPServer(QObject):
         self.timer = None
         self._message_log = deque(maxlen=1000)
 
-    def _notify_clients_changed(self):
+    # Commands worth a visible banner (not just the status bar): things a user
+    # would want to know an AI is doing even with the log panel closed.
+    ATTENTION_COMMANDS: ClassVar[set] = {
+        "execute_code",
+        "remove_layer",
+        "delete_features",
+        "set_setting",
+        "load_project",
+        "create_new_project",
+        "reload_plugin",
+    }
+
+    @staticmethod
+    def _notifications_enabled():
+        return QgsSettings().value("qgis_mcp/notify", True, type=bool)
+
+    def _notify_bar(self, text, level=None, duration=4):
+        """Heads-up banner in the QGIS message bar — visible without the log
+        panel, which most users keep closed."""
+        if not self.iface or not self._notifications_enabled():
+            return
+        with contextlib.suppress(Exception):
+            self.iface.messageBar().pushMessage(
+                "QGIS MCP", text, level=MSG_INFO if level is None else level, duration=duration
+            )
+
+    def _notify_status(self, text, ms=2500):
+        """Transient per-command ticker in the QGIS status bar (unobtrusive)."""
+        if not self.iface or not self._notifications_enabled():
+            return
+        with contextlib.suppress(Exception):
+            self.iface.statusBarIface().showMessage(text, ms)
+
+    def _notify_clients_changed(self, event=None):
         """Report the active client count to the UI (badge on the toolbar icon)."""
+        if event:
+            n = len(self.clients)
+            plural = "client" if n == 1 else "clients"
+            self._notify_bar(f"AI client {event} — {n} {plural} active")
         if self.on_clients_changed:
             with contextlib.suppress(Exception):
                 self.on_clients_changed(len(self.clients))
@@ -203,6 +244,7 @@ class QgisMCPServer(QObject):
                 self.LOG_TAG,
                 MSG_INFO if auth_on else MSG_WARNING,
             )
+            self._notify_bar(f"Server listening on {self.host}:{self.port}", level=MSG_SUCCESS)
             return True
         except Exception as e:
             QgsMessageLog.logMessage(f"Failed to start server: {e!s}", self.LOG_TAG, MSG_CRITICAL)
@@ -234,6 +276,7 @@ class QgisMCPServer(QObject):
 
         self.socket = None
         QgsMessageLog.logMessage("QGIS MCP server stopped", self.LOG_TAG, MSG_INFO)
+        self._notify_bar("Server stopped")
 
     def _disconnect_client(self, client_sock, message="Client disconnected", level=MSG_INFO):
         """Close and remove a client socket."""
@@ -241,7 +284,7 @@ class QgisMCPServer(QObject):
             client_sock.close()
         self.clients.pop(client_sock, None)
         QgsMessageLog.logMessage(f"{message} ({len(self.clients)} active)", self.LOG_TAG, level)
-        self._notify_clients_changed()
+        self._notify_clients_changed(event="disconnected")
 
     def _send_response(self, client_sock, response):
         """Send a length-prefixed JSON response to a client."""
@@ -267,7 +310,7 @@ class QgisMCPServer(QObject):
                             self.LOG_TAG,
                             MSG_INFO,
                         )
-                        self._notify_clients_changed()
+                        self._notify_clients_changed(event="connected")
                     except BlockingIOError:
                         break
                     except Exception as e:
@@ -478,6 +521,9 @@ class QgisMCPServer(QObject):
             if handler:
                 try:
                     QgsMessageLog.logMessage(f"Executing: {cmd_type}", self.LOG_TAG, MSG_INFO)
+                    self._notify_status(f"MCP: {cmd_type}")
+                    if cmd_type in self.ATTENTION_COMMANDS:
+                        self._notify_bar(f"AI client running: {cmd_type}")
                     result = handler(**params)
                     return {"status": "success", "result": result}
                 except Exception as e:
@@ -1842,7 +1888,7 @@ class QgisMCPServer(QObject):
                 "tag": tag,
                 "message": message,
                 "level": self._LEVEL_MAP.get(int(level), str(level)),
-                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "timestamp": datetime.now(tz=timezone.utc).isoformat(),
             }
         )
 
@@ -3713,6 +3759,29 @@ class QgisMCPPlugin:
         allhosts_wa = QWidgetAction(self.iface.mainWindow())
         allhosts_wa.setDefaultWidget(allhosts_widget)
 
+        # Activity-notification checkbox: message-bar banners for connect/
+        # disconnect/start/stop + a status-bar ticker per command, so the user
+        # sees MCP activity without keeping the log panel open.
+        self.notify_cb = QCheckBox("Show activity notifications")
+        self.notify_cb.setToolTip(
+            "Message-bar heads-up when an AI client connects/disconnects and for "
+            "attention-worthy commands;\nstatus-bar ticker for every command. "
+            "Disable for a quiet log-panel-only experience."
+        )
+        self.notify_cb.setChecked(
+            settings.value(f"{self.SETTINGS_PREFIX}/notify", True, type=bool)
+        )
+        self.notify_cb.toggled.connect(self._save_notify)
+
+        notify_widget = QWidget()
+        notify_layout = QHBoxLayout()
+        notify_layout.setContentsMargins(6, 4, 6, 4)
+        notify_layout.addWidget(self.notify_cb)
+        notify_widget.setLayout(notify_layout)
+
+        notify_wa = QWidgetAction(self.iface.mainWindow())
+        notify_wa.setDefaultWidget(notify_widget)
+
         # Auto-start checkbox
         self.autostart_cb = QCheckBox("Auto-start on startup")
         self.autostart_cb.setChecked(
@@ -3735,6 +3804,7 @@ class QgisMCPPlugin:
         menu = QMenu()
         menu.addAction(port_wa)
         menu.addAction(allhosts_wa)
+        menu.addAction(notify_wa)
         menu.addAction(autostart_wa)
         menu.addSeparator()
         menu.addAction(configure_action)
@@ -3835,6 +3905,10 @@ class QgisMCPPlugin:
     def _save_bind_all(self, checked):
         """Persist bind-address preference (0.0.0.0 vs localhost)."""
         QgsSettings().setValue(f"{self.SETTINGS_PREFIX}/bind_all", checked)
+
+    def _save_notify(self, checked):
+        """Persist the activity-notification preference."""
+        QgsSettings().setValue(f"{self.SETTINGS_PREFIX}/notify", checked)
 
     def _green_logo_icon(self):
         """Load the green MCP logo for active state."""

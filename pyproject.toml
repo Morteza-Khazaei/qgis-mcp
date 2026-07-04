@@ -10,7 +10,7 @@ package = true
 
 [project]
 name = "qgis-mcp"
-version = "0.6.1"
+version = "0.6.2"
 description = "QGIS integration through the Model Context Protocol"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -38,7 +38,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101"]           # assert is fine in tests
-"qgis_mcp_plugin/*" = ["UP038"]  # runs inside QGIS (Python 3.9 on QGIS 3.28) — `X | Y` in isinstance needs 3.10+
+"qgis_mcp_plugin/*" = ["UP038", "UP017"]  # runs inside QGIS (Python 3.9 on QGIS 3.28) — `X | Y` in isinstance needs 3.10+, datetime.UTC needs 3.11+
 "benchmarks/*" = ["T201", "B023"]  # print is fine; loop-var closures are called within same iteration
 
 [tool.pytest.ini_options]
