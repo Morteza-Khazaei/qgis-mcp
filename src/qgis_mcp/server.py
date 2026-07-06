@@ -30,7 +30,6 @@ from mcp.types import (
 from qgis_mcp.client import QgisMCPClient
 from qgis_mcp.helpers import (
     BATCH_BLOCKED_COMMANDS,
-    DEFAULT_HOST,
     DEFAULT_PORT,
     TIMEOUT_DEFAULT,
     TIMEOUT_LONG,
@@ -38,6 +37,7 @@ from qgis_mcp.helpers import (
     make_layer_response,
     make_project_response,
     make_render_response,
+    resolve_qgis_host,
 )
 
 
@@ -113,7 +113,6 @@ def get_qgis_connection() -> QgisMCPClient:
             _qgis_connection = None
             _connection_validated_at = 0.0
 
-    host = os.environ.get("QGIS_MCP_HOST", DEFAULT_HOST)
     port_str = os.environ.get("QGIS_MCP_PORT", str(DEFAULT_PORT))
     try:
         port = int(port_str)
@@ -121,6 +120,7 @@ def get_qgis_connection() -> QgisMCPClient:
             raise ValueError("out of range")
     except ValueError as exc:
         raise ValueError(f"QGIS_MCP_PORT must be an integer 1-65535, got: {port_str!r}") from exc
+    host = resolve_qgis_host(port)
     _qgis_connection = QgisMCPClient(host=host, port=port)
     if not _qgis_connection.connect():
         _qgis_connection = None
@@ -281,7 +281,7 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[dict[str, Any]]:
     The first tool call triggers connection via _send_sync()'s retry loop,
     which is more robust (handles QGIS still starting, plugin not yet enabled).
     """
-    host = os.environ.get("QGIS_MCP_HOST", DEFAULT_HOST)
+    host = os.environ.get("QGIS_MCP_HOST", "").strip() or "auto-detect"
     port = os.environ.get("QGIS_MCP_PORT", str(DEFAULT_PORT))
     logger.info(f"QgisMCPServer starting up (will connect to QGIS at {host}:{port} on first call)")
     try:
@@ -2216,7 +2216,7 @@ then pass that path to `add_vector_layer` to load it as a background for spatial
 - qgis://llms.txt — this context file
 
 ## Environment Variables
-- QGIS_MCP_HOST — server host (default: localhost)
+- QGIS_MCP_HOST — server host (default: auto-detect — localhost, or the Windows host under WSL2)
 - QGIS_MCP_PORT — server port (default: 9876)
 - QGIS_MCP_TOKEN — optional shared secret; when set, must match the plugin's value (default: unset = no auth)
 - QGIS_MCP_TRANSPORT — "stdio" (default) or "streamable-http"

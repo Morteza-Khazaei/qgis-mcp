@@ -6,6 +6,7 @@ Imports only from ``mcp`` and stdlib — no circular-import risk.
 import importlib.metadata
 import json
 import os
+import socket
 import struct
 
 from mcp.types import Annotations, ImageContent, ResourceLink, TextContent
@@ -31,6 +32,64 @@ BATCH_BLOCKED_COMMANDS = frozenset(
         "reload_plugin",
     }
 )
+
+
+def _running_under_wsl():
+    """True when this process runs inside Windows Subsystem for Linux."""
+    if os.environ.get("WSL_DISTRO_NAME") or os.environ.get("WSL_INTEROP"):
+        return True
+    try:
+        with open("/proc/version") as f:
+            return "microsoft" in f.read().lower()
+    except OSError:
+        return False
+
+
+def _wsl_default_gateway():
+    """Return the default-gateway IP (the Windows host in WSL2 NAT mode), or None."""
+    RTF_GATEWAY = 0x2
+    try:
+        with open("/proc/net/route") as f:
+            for line in f.readlines()[1:]:
+                fields = line.split()
+                if len(fields) < 4:
+                    continue
+                if fields[1] == "00000000" and int(fields[3], 16) & RTF_GATEWAY:
+                    return socket.inet_ntoa(struct.pack("<I", int(fields[2], 16)))
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def resolve_qgis_host(port):
+    """Resolve which host the QGIS plugin socket lives on.
+
+    An explicit ``QGIS_MCP_HOST`` always wins (the literal ``auto`` forces
+    detection). Outside WSL the answer is simply ``DEFAULT_HOST``. Under WSL2
+    the Windows host is *not* loopback in NAT mode, and its gateway IP changes
+    across Windows reboots — so probe instead of hardcoding: try localhost
+    first (mirrored networking mode, or a QGIS inside WSL), then the default
+    gateway (NAT mode). Returns the first candidate that accepts a TCP
+    connection; if none do, returns the last candidate so the caller's normal
+    connection-error path reports the most likely target.
+    """
+    env_host = os.environ.get("QGIS_MCP_HOST", "").strip()
+    if env_host and env_host.lower() != "auto":
+        return env_host
+    if not _running_under_wsl():
+        return DEFAULT_HOST
+
+    candidates = [DEFAULT_HOST]
+    gateway = _wsl_default_gateway()
+    if gateway:
+        candidates.append(gateway)
+    for host in candidates:
+        try:
+            with socket.create_connection((host, port), timeout=1.0):
+                return host
+        except OSError:
+            continue
+    return candidates[-1]
 
 
 def get_auth_token():
