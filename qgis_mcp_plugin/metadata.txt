@@ -19,7 +19,7 @@ about=Socket server plugin that exposes QGIS operations to LLMs through the
     - Non-blocking TCP socket server with length-prefixed framing
     - Toolbar button with port configuration dropdown
 
-version=0.7.1
+version=0.7.2
 author=Nicolas Karasiak
 email=nicart@gmail.com
 tags=mcp,ai,claude,llm,automation,socket,remote
@@ -31,7 +31,11 @@ category=Plugins
 icon=icons/icon.png
 experimental=False
 deprecated=False
-changelog=0.7.1 : WSL2 fix - bind 0.0.0.0 by default so WSL2/remote MCP clients can
+changelog=0.7.2 : Server-side WSL2 auto-detect - when QGIS_MCP_HOST is unset the MCP
+    server now finds the QGIS host itself (localhost, or the Windows default gateway
+    under WSL2 NAT mode, re-resolved on every reconnect so Windows reboots changing
+    the IP no longer break the connection); no plugin code changes
+    0.7.1 : WSL2 fix - bind 0.0.0.0 by default so WSL2/remote MCP clients can
     reach the socket (loopback-only default left the server unreachable from WSL2
     even after enabling the bind option later); uncheck the toolbar option to
     restrict to 127.0.0.1, set QGIS_MCP_TOKEN for auth when exposed
