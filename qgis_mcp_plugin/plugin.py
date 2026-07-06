@@ -3768,10 +3768,10 @@ class QgisMCPPlugin:
         port_wa = QWidgetAction(self.iface.mainWindow())
         port_wa.setDefaultWidget(port_widget)
 
-        # Bind-address checkbox: default binds 127.0.0.1 (Windows-only). WSL2 /
-        # other machines can't reach a loopback-only socket — checking this
-        # binds 0.0.0.0 so no netsh portproxy is needed (set QGIS_MCP_TOKEN for
-        # auth when exposing the socket beyond localhost).
+        # Bind-address checkbox: defaults to 0.0.0.0 so WSL2 / other machines
+        # can reach the socket without netsh portproxy (a loopback-only bind is
+        # invisible to them). Uncheck to restrict to 127.0.0.1; set
+        # QGIS_MCP_TOKEN for auth when exposing the socket beyond localhost.
         settings = QgsSettings()
         self.allhosts_cb = QCheckBox("Allow external connections (bind 0.0.0.0)")
         self.allhosts_cb.setToolTip(
@@ -3780,7 +3780,7 @@ class QgisMCPPlugin:
             "on both sides when enabling this."
         )
         self.allhosts_cb.setChecked(
-            settings.value(f"{self.SETTINGS_PREFIX}/bind_all", False, type=bool)
+            settings.value(f"{self.SETTINGS_PREFIX}/bind_all", True, type=bool)
         )
         self.allhosts_cb.toggled.connect(self._save_bind_all)
 

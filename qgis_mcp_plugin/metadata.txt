@@ -19,7 +19,7 @@ about=Socket server plugin that exposes QGIS operations to LLMs through the
     - Non-blocking TCP socket server with length-prefixed framing
     - Toolbar button with port configuration dropdown
 
-version=0.7.0
+version=0.7.1
 author=Nicolas Karasiak
 email=nicart@gmail.com
 tags=mcp,ai,claude,llm,automation,socket,remote
@@ -31,7 +31,11 @@ category=Plugins
 icon=icons/icon.png
 experimental=False
 deprecated=False
-changelog=0.4.7 : Add OpenCode to MCP client configurator dropdown (config path,
+changelog=0.7.1 : WSL2 fix - bind 0.0.0.0 by default so WSL2/remote MCP clients can
+    reach the socket (loopback-only default left the server unreachable from WSL2
+    even after enabling the bind option later); uncheck the toolbar option to
+    restrict to 127.0.0.1, set QGIS_MCP_TOKEN for auth when exposed
+    0.4.7 : Add OpenCode to MCP client configurator dropdown (config path,
     entry format with type/command array)
     0.4.3 : Offline fix - drop --refresh-package from default MCP configs (made
     server fail to start without internet), one-time prompt removes it from existing
